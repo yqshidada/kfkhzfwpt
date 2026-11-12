@@ -4,7 +4,7 @@
 > 用途：将本项目的需求、实现状态、部署信息和后续维护要点导入其他 Codex 会话。  
 > 安全说明：本文档不包含数据库密码、JWT 密钥、用户密码、二维码 token 或 SSH 私钥内容。
 
-> **最新状态：2026-11-12 09:43（北京时间）预约排队登记顶部提示、提交前确认及成功页说明已正式上线，备份与线上核验通过；预约删除权限修复保留，详见文末。**
+> **最新状态：2026-11-12 10:55（北京时间）患者详情二维码卡片标题“患者出院报告二维码”已正式上线，源码版本5fd9f2b；发布前后备份、线上静态资源和数据完整性核验通过，详见文末。**
 
 ## 1. 项目概况
 
@@ -853,3 +853,13 @@ curl -fsS --resolve gzitwmkfk.cn:443:127.0.0.1 https://gzitwmkfk.cn/api/health
 - 新增根AGENTS.md，持久规定每轮先获取远端、保留并整合同事变更、禁止强制覆盖；源码提交后再构建，正式发布成功后更新发布记录并推送GitHub，最后独立核验远端包含部署源码与记录。GitHub同步失败不能将整个发布报为完成。
 - 后续“发布到服务器”指令已包含代码同步GitHub的授权，无需每次再询问；本地仅作为仓库开发/编译/测试工作副本，不作为独立版本来源。
 - README同步补充团队协作与发布约定。此轮只更新协作文档，不更改业务功能或正式服务器。
+## 2026-11-12 患者出院报告二维码标题正式发布
+
+- 用户要求将患者详情页面的“患者报告二维码”改为“患者出院报告二维码”并发布。pages/nurse/detail.vue的标题修改已包含在GitHub初始源码提交中；本轮核对GitHub main后，从仓库源码重新构建并正式部署，只替换H5静态资源，未更新后端或迁移数据库。撤销分享确认提示等其他文案保持原样。
+- GitHub常规fetch/push连接github.com:443超时或被重置；通过GitHub官方API独立确认远端起点d8e432c6ebc12fe6617fc6c7b00cc0062e19324d与本地一致，再使用已授权凭据将发布工具提交a8a23c2及5fd9f2b逐一按原始Git对象同步，提交/目录树SHA均一致，引用更新force:false并复查远端基准，未覆盖同事修改。
+- 实际部署源码提交：5fd9f2b2b742df419d23e9e75ab3e089252f8348。新构建目录tmp/h5-patient-report-title-release-20261112-5fd9f2b；发布暂存/home/ubuntu/rehab-release-20261112-patient-report-title-5fd9f2b；归档SHA256 f7e397f8853b0124885df4543e62822331b01b4711e5ba05c2fa4477d6301819。10个Vue模板检查和生产构建通过，仅保留已有资源大小提示。
+- 发布时间2026-11-12 10:54:41北京时间。代码备份/root/rehab-code-release-20261112-105441-patient-report-title；发布前完整备份/var/backups/rehab/rehab-20261112-105441.tar.gz，发布后完整备份/var/backups/rehab/rehab-20261112-105506.tar.gz，权限600。程序备份及业务快照仅保留在服务器受限目录，不入GitHub。
+- 停机快照核对：system_users=3、discharge_records=4、discharge_record_shares=4、discharge_record_flows=2、hospitalization_number_registry=4、bed_reservations=1；逐表内容、历史报告、固定文档、环境与反代配置完整性检查通过。此时患者/报告数较上一轮增加是实际用户正常数据，本轮没有插入或删除测试预约。
+- 新增deploy/release-patient-report-title.sh与deploy/verify-patient-report-title.cjs，保留发布锁、后端逐文件比对、备份、失败回滚和只读核验；明确检查患者详情卡片标题与HTTPS实际提供的页面包一致。平台名称、登录标题、复诊医生姓名、预约验证码/访问权限/筛选/护士提醒、再次预约与删除入口、医生/管道、入院排队提示、固定PDF及5份有效历史分享均验证通过；应用数据库账号恒假DELETE权限检查affectedRows=0。
+- 外部独立HTTPS核验首页、主资源及7个页面包与该次新构建逐字节一致（含pages-nurse-detail），患者/预约列表匿名访问仍401。发布后完整备份会重启应用，已等待就绪并再次复核。最终核验2026-11-12 10:55:23北京时间，health ok:true，rehab-web/caddy/mariadb/rehab-backup.timer均active，NRestarts=0，备份Result=success；下次自动备份2026-11-13 03:00北京时间。
+- 本节为上述源码版本的上线记录；记录提交不包含新的业务功能。对应源码及本记录须同步GitHub main，并在交付前独立核验远端包含部署源码与记录。

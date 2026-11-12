@@ -838,3 +838,10 @@ curl -fsS --resolve gzitwmkfk.cn:443:127.0.0.1 https://gzitwmkfk.cn/api/health
 - 用户提供目标https://github.com/yqshidada/kfkhzfwpt.git；通过GitHub官方API确认归属yqshidada，当前为公开仓库、默认分支main、size为0。此前拟建私有仓库的建议不作为实际目标，遵循用户提供的仓库。
 - 本地代码已暂存，配置origin指向上述仓库；首次提交使用GitHub账号yqshidada及其官方账号ID对应的隐私邮箱56528141+yqshidada@users.noreply.github.com，不需要收集个人邮箱。
 - 本机GitHub凭据列表为空；github.com:443连接超时，但api.github.com可访问。尚未完成GitHub登录授权或远端推送；本地提交不等于上传成功。后续接续先确认网络和官方登录，再检查远程分支，普通push，不force覆盖。
+
+## 2026-11-12 完整源码已上传 GitHub
+
+- 用户提供仓库并完成GitHub官方授权后，已将完整项目源码推送至https://github.com/yqshidada/kfkhzfwpt.git的main分支，已设置origin及main上游。初始提交529b2080ba139c9398480b996bedff82baea71d9，远程ls-remote及GitHub官方API逐项核验一致。
+- GitHub目录树含121个文件，包含前端页面、后端、依赖锁文件、固定入院文档、环境示例、测试、部署脚本、README和开发记录。不是将整个项目打成压缩包后上传，支持正常git clone及后续提交；包含“患者出院报告二维码”最新本地修改，该标题尚未部署到正式服务器。
+- 真实server/.env、tmp、output、server/storage、server/public、依赖目录、浏览器快照及个人开发配置均未进入远程目录树。克隆后按README安装后端依赖并配置本机数据库/独立密钥，不能依赖未上传的本机私有环境。
+- 目标仓库目前为用户提供的公开仓库，未修改其可见性。未force覆盖远程历史，亦未修改正式服务。提交身份仅在本仓库配置，使用GitHub隐私邮箱。

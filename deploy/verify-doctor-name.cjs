@@ -18,16 +18,19 @@ function request(path) {
   })
 }
 ;(async () => {
-  const chunks = fs.readdirSync(app + '/static/js').filter(name => /^pages-bed-reservation-index\.[^.]+\.js$/.test(name))
-  assert.equal(chunks.length, 1, 'Expected exactly one reservation bundle')
-  const bytes = fs.readFileSync(app + '/static/js/' + chunks[0])
-  const text = decode(bytes.toString('utf8'))
+  const chunks = fs.readdirSync(app + '/static/js').filter(name => /^pages-bed-reservation-index(?:~pages-nurse-list)?\.[^.]+\.js$/.test(name))
+  assert.equal(chunks.length, 2, 'Expected reservation page and shared validation bundles')
+  let text = ''
+  for (const chunk of chunks) {
+    const bytes = fs.readFileSync(app + '/static/js/' + chunk)
+    text += decode(bytes.toString('utf8'))
+    const remote = await request('/static/js/' + chunk)
+    assert.equal(remote.status, 200)
+    assert.equal(remote.bytes.compare(bytes), 0, 'HTTPS reservation/shared validation bundle mismatch')
+  }
   const options = require('/opt/rehab-app/server/reservation-validation')
   assert.deepEqual(options.RESERVATION_DOCTORS, ['殷茵', '杨浩宇', '朱广浩', '饶志远', '其他'])
   for (const doctor of options.RESERVATION_DOCTORS) assert.ok(text.includes(doctor), 'Doctor option missing from H5: ' + doctor)
   assert.ok(!text.includes('姚志远'), 'Old doctor name remains in the form')
-  const remote = await request('/static/js/' + chunks[0])
-  assert.equal(remote.status, 200)
-  assert.equal(remote.bytes.compare(bytes), 0, 'HTTPS must serve the exact new reservation bundle')
   console.log('PASS: exact HTTPS reservation form and backend doctor options use 饶志远')
 })().catch(error => { console.error('Doctor name verification failed:', error.code || error.message); process.exitCode = 1 })

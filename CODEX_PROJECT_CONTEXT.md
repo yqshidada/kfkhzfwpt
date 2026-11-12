@@ -4,7 +4,7 @@
 > 用途：将本项目的需求、实现状态、部署信息和后续维护要点导入其他 Codex 会话。  
 > 安全说明：本文档不包含数据库密码、JWT 密钥、用户密码、二维码 token 或 SSH 私钥内容。
 
-> **最新状态：2026-11-12 10:55（北京时间）患者详情二维码卡片标题“患者出院报告二维码”已正式上线，源码版本5fd9f2b；发布前后备份、线上静态资源和数据完整性核验通过，详见文末。**
+> **最新状态：2026-11-12 23:10（北京时间）床位预约医生“姚志远”已更正为“饶志远”并正式上线，部署源码2645598；备份、数据完整性、线上资源及手机端下拉选项核验通过，详见文末。**
 
 ## 1. 项目概况
 
@@ -863,3 +863,14 @@ curl -fsS --resolve gzitwmkfk.cn:443:127.0.0.1 https://gzitwmkfk.cn/api/health
 - 新增deploy/release-patient-report-title.sh与deploy/verify-patient-report-title.cjs，保留发布锁、后端逐文件比对、备份、失败回滚和只读核验；明确检查患者详情卡片标题与HTTPS实际提供的页面包一致。平台名称、登录标题、复诊医生姓名、预约验证码/访问权限/筛选/护士提醒、再次预约与删除入口、医生/管道、入院排队提示、固定PDF及5份有效历史分享均验证通过；应用数据库账号恒假DELETE权限检查affectedRows=0。
 - 外部独立HTTPS核验首页、主资源及7个页面包与该次新构建逐字节一致（含pages-nurse-detail），患者/预约列表匿名访问仍401。发布后完整备份会重启应用，已等待就绪并再次复核。最终核验2026-11-12 10:55:23北京时间，health ok:true，rehab-web/caddy/mariadb/rehab-backup.timer均active，NRestarts=0，备份Result=success；下次自动备份2026-11-13 03:00北京时间。
 - 本节为上述源码版本的上线记录；记录提交不包含新的业务功能。对应源码及本记录须同步GitHub main，并在交付前独立核验远端包含部署源码与记录。
+
+## 2026-11-12 床位预约医生姓名更正并正式发布
+
+- 按用户要求，将床位预约医生选项“姚志远”更正为“饶志远”。预约页面复用server/reservation-validation.js中的选项，前端下拉及后端校验同步使用正确姓名；其余医生和预约字段不变。更新对应说明、前后端测试和部署检查的预期姓名，没有批量修改历史预约数据。
+- 工作开始成功fetch origin，main与远端5015796一致且工作区干净；源码更正提交e7d4cd8fbbf902c56fd2ad8fafedee9ff334191c，发布检查适配共用资源的提交26455987f3b3d7c20afe4fe769c3e2d6a0b97eab，均普通push成功。源码构建以2645598为准，独立GitHub检查确认可获取更正源码。
+- 预约页面交互回归、10个Vue模板编译、后端接受“饶志远”的纯内存验证通过。H5生产构建通过，仅保留已有两个资源大小提示。医生选项位于pages-bed-reservation-index~pages-nurse-list共用包，发布检查同时核对预约页面、共用包及后端，避免仅检查页面单包漏检。
+- 实际部署源码26455987f3b3d7c20afe4fe769c3e2d6a0b97eab；构建tmp/h5-doctor-name-release-20261112-2645598；发布暂存/home/ubuntu/rehab-release-20261112-doctor-name-2645598；归档SHA256 26cedd6166505bead33f1d62e4c2839b84adc8f8cc431ac9a24d3a14db0adece。发布仅替换H5及reservation-validation.js，未进行数据库迁移，其他后端/依赖逐文件基线比较通过；共用校验模块上线SHA256 f1cd083e9aa87b243692416b01b5e9fc797036a5bc528c460d6239bb9a4f6cfd。
+- 发布时间2026-11-12 23:09:01北京时间；代码备份/root/rehab-code-release-20261112-230901-doctor-name；发布前后完整备份/var/backups/rehab/rehab-20261112-230901.tar.gz与/var/backups/rehab/rehab-20261112-231014.tar.gz，权限600。新增deploy/release-doctor-name.sh与deploy/verify-doctor-name.cjs，保留发布锁、基线检查、备份和失败回滚。
+- 发布前快照system_users=3、discharge_records=4、discharge_record_shares=4、discharge_record_flows=2、hospitalization_number_registry=4、bed_reservations=2；发布后逐表数据、报告、固定文档、环境和反代配置完整性检查通过，未写入测试预约。预约数较上一轮增加来自用户正常业务数据。
+- 线上检查通过：医生选项及后端为“饶志远”；HTTPS首页、主资源、7个页面包和预约共用包与本次构建逐字节一致；Edge手机尺寸实际打开预约下拉，看到“饶志远”且无“姚志远”，未提交表单。既有验证码、访问保护、护士提醒/筛选、再次预约/删除入口、入院提示、患者出院报告二维码标题、5份历史有效分享及固定PDF检查通过。
+- 发布后完整备份已完成并等待应用就绪；2026-11-12 23:10:16北京时间health ok:true，rehab-web/caddy/mariadb/rehab-backup.timer均active，NRestarts=0，备份Result=success；下次自动备份2026-11-13 03:00北京时间。上线记录提交随本次发布同步GitHub main，交付前核对远端同时包含部署源码与本记录。

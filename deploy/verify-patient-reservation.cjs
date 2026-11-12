@@ -65,7 +65,7 @@ async function bundle(prefix) {
   for (const text of ['删除预约', '删除后无法恢复', '确认再次预约']) assert.ok(list.includes(text), 'Missing protected nurse action')
   const { validateReservation, mapReservation } = require(app + '/bed-reservations')
   const options = require(app + '/reservation-validation')
-  assert.deepEqual(options.RESERVATION_DOCTORS, ['殷茵', '杨浩宇', '朱广浩', '姚志远', '其他'])
+  assert.deepEqual(options.RESERVATION_DOCTORS, ['殷茵', '杨浩宇', '朱广浩', '饶志远', '其他'])
   assert.deepEqual(options.RESERVATION_TUBES, ['胃管', '尿管', 'PICC管', '气切管', 'CVC管', '胃造瘘管', '输液港', '其他'])
   assert.ok(detail.includes('预约医生') && detail.includes('tubeSummary'), 'Nurse care detail missing')
   const value = { name: '发布只读校验', gender: '女', age: '60', phone: '13800138000', idCard: '11010519491231002X', diagnosis: '仅内存校验，不写入数据库' }

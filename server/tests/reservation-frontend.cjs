@@ -389,7 +389,10 @@ const result = (id, hasMore = false, total = 45) => ({ total, items: [{ id }], n
   const careBooking = component('pages/bed-reservation/index.vue', { ...helpers, ...validation, ReservationCaptcha: {},
     createBedReservation: async data => { careSubmissions.push(data); if (careFailure) throw Error('保存失败'); return { accepted: true } }
   }).instance
-  assert.deepEqual(Array.from(careBooking.doctorOptions), ['殷茵', '杨浩宇', '朱广浩', '姚志远', '其他'])
+  assert.deepEqual(Array.from(careBooking.doctorOptions), ['殷茵', '杨浩宇', '朱广浩', '饶志远', '其他'])
+  careBooking.handleDoctorChange({ detail: { value: '3' } })
+  assert.equal(careBooking.form.doctor, '饶志远')
+  assert.equal(careBooking.doctorIndex, 3)
   assert.deepEqual(Array.from(careBooking.tubeOptions), ['胃管', '尿管', 'PICC管', '气切管', 'CVC管', '胃造瘘管', '输液港', '其他'])
   careBooking.handleDoctorChange({ detail: { value: '1' } })
   assert.equal(careBooking.form.doctor, '杨浩宇'); assert.equal(careBooking.doctorIndex, 1)

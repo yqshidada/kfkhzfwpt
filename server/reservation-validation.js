@@ -3,7 +3,7 @@
 const PROVINCES = new Set(['11','12','13','14','15','21','22','23','31','32','33','34','35','36','37','41','42','43','44','45','46','50','51','52','53','54','61','62','63','64','65'])
 const WEIGHTS = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
 const CHECK_DIGITS = '10X98765432'
-const RESERVATION_DOCTORS = ['殷茵', '杨浩宇', '朱广浩', '姚志远', '其他']
+const RESERVATION_DOCTORS = ['殷茵', '杨浩宇', '朱广浩', '饶志远', '其他']
 const RESERVATION_TUBES = ['胃管', '尿管', 'PICC管', '气切管', 'CVC管', '胃造瘘管', '输液港', '其他']
 function normalizeReservationCare(source = {}) {
   const selected = Array.isArray(source.tubeTypes) ? source.tubeTypes : []

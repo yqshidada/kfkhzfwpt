@@ -51,7 +51,7 @@ async function freePort() {
   assert.equal(mapped.repeatReservation, null)
   // Appointment doctor/tubes are optional; 'other' requires a bounded free-text name.
   const careOptions = require('../reservation-validation')
-  assert.deepEqual(careOptions.RESERVATION_DOCTORS, ['殷茵', '杨浩宇', '朱广浩', '姚志远', '其他'])
+  assert.deepEqual(careOptions.RESERVATION_DOCTORS, ['殷茵', '杨浩宇', '朱广浩', '饶志远', '其他'])
   assert.deepEqual(careOptions.RESERVATION_TUBES, ['胃管', '尿管', 'PICC管', '气切管', 'CVC管', '胃造瘘管', '输液港', '其他'])
   for (const doctor of careOptions.RESERVATION_DOCTORS) assert.equal(validateReservation({ requestId: crypto.randomUUID(), form: { ...form, doctor } }).form.doctor, doctor)
   for (const value of [undefined, null, '']) {

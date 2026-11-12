@@ -1,0 +1,92 @@
+{
+	"pages": [
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "康复科患者服务平台",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4F7FB"
+			}
+		},
+		{
+			"path": "pages/login/index",
+			"style": {
+				"navigationStyle": "custom",
+				"backgroundColor": "#1295EE"
+			}
+		},
+		{
+			"path": "pages/hzjbxx/index",
+			"style": {
+				"navigationBarTitleText": "患者基本信息",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4F7FB"
+			}
+		},
+		{
+			"path": "pages/bed-reservation/index",
+			"style": {
+				"navigationBarTitleText": "预约床位",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4F7FB"
+			}
+		},
+		{
+			"path": "pages/rylc/index",
+			"style": {
+				"navigationBarTitleText": "入院流程",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4F7FB"
+			}
+		},
+		{
+			"path": "pages/cylc/index",
+			"style": {
+				"navigationBarTitleText": "出院流程",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4F7FB"
+			}
+		},
+		{
+			"path": "pages/nurse/list",
+			"style": {
+				"navigationBarTitleText": "患者与预约",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4F7FB",
+				"enablePullDownRefresh": true
+			}
+		},
+		{
+			"path": "pages/nurse/detail",
+			"style": {
+				"navigationBarTitleText": "患者详情",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4F7FB"
+			}
+		},
+		{
+			"path": "pages/nurse/reservation-detail",
+			"style": {
+				"navigationBarTitleText": "预约详情",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4F7FB"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "康复科患者服务平台",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8",
+		"navigationStyle": "custom"
+	},
+	"uniIdRouter": {}
+}

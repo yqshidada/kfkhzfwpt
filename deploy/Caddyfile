@@ -1,0 +1,31 @@
+{
+	admin 127.0.0.1:2019
+	storage file_system {
+		root C:/rehab-app/proxy/data
+	}
+}
+
+gzitwmkfk.cn {
+	tls {
+		issuer acme {
+			dir https://acme-v02.api.letsencrypt.org/directory
+			disable_tlsalpn_challenge
+		}
+	}
+	encode gzip
+	reverse_proxy 127.0.0.1:3000
+}
+
+www.gzitwmkfk.cn {
+	tls {
+		issuer acme {
+			dir https://acme-v02.api.letsencrypt.org/directory
+			disable_tlsalpn_challenge
+		}
+	}
+	redir https://gzitwmkfk.cn{uri} permanent
+}
+
+http://193.112.28.250 {
+	redir https://gzitwmkfk.cn{uri} permanent
+}

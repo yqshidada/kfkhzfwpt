@@ -1,0 +1,23 @@
+<service>
+  <id>RehabWeb</id>
+  <name>Rehab H5 and API</name>
+  <description>Rehabilitation discharge guidance website and API</description>
+  <executable>C:\Program Files\nodejs\node.exe</executable>
+  <arguments>--max-old-space-size=192 C:\rehab-app\server\index.js</arguments>
+  <workingdirectory>C:\rehab-app\server</workingdirectory>
+  <env name="NODE_ENV" value="production" />
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <depend>MariaDB</depend>
+  <serviceaccount>
+    <username>NT AUTHORITY\LocalService</username>
+  </serviceaccount>
+  <onfailure action="restart" delay="10 sec" />
+  <onfailure action="restart" delay="30 sec" />
+  <onfailure action="restart" delay="60 sec" />
+  <logpath>C:\rehab-app\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+</service>

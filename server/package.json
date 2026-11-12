@@ -1,0 +1,17 @@
+{
+  "name": "rehab-discharge-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test:reservations": "node tests/reservation-captcha.cjs && node tests/reservation-identity.cjs && node tests/bed-reservations.cjs && node tests/reservation-frontend.cjs && node tests/public-entry.cjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mysql2": "^3.12.0",
+    "qrcode": "^1.5.4",
+    "svg-captcha": "1.4.0"
+  }
+}

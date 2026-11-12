@@ -1,0 +1,46 @@
+unpackage/
+.DS_Store
+.hbuilderx/
+server/node_modules/
+server/.env
+tmp/
+server/public/
+server/storage/
+
+# Dependencies and generated files
+node_modules/
+dist/
+coverage/
+output/
+.playwright-cli/
+.cache/
+*.log
+*.tsbuildinfo
+__pycache__/
+*.pyc
+
+# Local settings and credentials
+.env
+.env.*
+!.env.example
+project.private.config.json
+.vscode/
+.idea/
+Thumbs.db
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+
+# Database exports and private backup archives
+*.sql
+*.sql.gz
+*.dump
+*.bak
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.7z

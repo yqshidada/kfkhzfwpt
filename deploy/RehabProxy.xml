@@ -1,0 +1,21 @@
+<service>
+  <id>RehabProxy</id>
+  <name>Rehab HTTPS Proxy</name>
+  <description>HTTPS and automatic certificate renewal for gzitwmkfk.cn</description>
+  <executable>C:\rehab-app\proxy\caddy.exe</executable>
+  <arguments>run --config C:\rehab-app\proxy\Caddyfile --adapter caddyfile</arguments>
+  <workingdirectory>C:\rehab-app\proxy</workingdirectory>
+  <env name="GOMEMLIMIT" value="128MiB" />
+  <env name="GOMAXPROCS" value="2" />
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <depend>RehabWeb</depend>
+  <onfailure action="restart" delay="10 sec" />
+  <onfailure action="restart" delay="30 sec" />
+  <onfailure action="restart" delay="60 sec" />
+  <logpath>C:\rehab-app\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+</service>

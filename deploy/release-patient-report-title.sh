@@ -15,6 +15,7 @@ node --check deploy/verify-platform-name.cjs
 node --check deploy/verify-login-title.cjs
 node --check deploy/verify-patient-report-title.cjs
 node --check deploy/verify-patient-report-title.cjs
+node --check deploy/verify-admission-notice.cjs
 node --check deploy/verify-reservation-doctor-tubes.cjs
 node --check deploy/release-support.cjs
 node --check deploy/verify-reservation-release.cjs
@@ -82,7 +83,7 @@ node "$stage/deploy/verify-patient-report-title.cjs"
 node "$stage/deploy/verify-followup-names.cjs"
 node "$stage/deploy/verify-reservation-release.cjs"
 node "$stage/deploy/verify-reservation-doctor-tubes.cjs"
-node "$stage/deploy/verify-patient-report-title.cjs"
+node "$stage/deploy/verify-admission-notice.cjs"
 systemctl is-active --quiet rehab-web
 systemctl is-active --quiet caddy
 systemctl is-active --quiet mariadb

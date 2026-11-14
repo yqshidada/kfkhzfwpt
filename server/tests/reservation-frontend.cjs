@@ -494,6 +494,57 @@ const result = (id, hasMore = false, total = 45) => ({ total, items: [{ id }], n
   const nurseSource = read('pages/nurse/list.vue')
   for (const handler of ['openRebook(record)', 'handleDeleteReservation(record)']) assert.ok(nurseSource.includes('@tap.stop="' + handler + '"'), 'Action button must not trigger opening card details')
   assert.ok(nurseSource.includes('删除后无法恢复'))
+  // Staff drafts survive errors and protect concurrent edits with the server version.
+  let noteCalls = 0, noteMode = 'conflict', noteJob
+  const notePage = component('pages/nurse/list.vue', { ...helpers,
+    updateBedReservationNote: async (id, data) => {
+      noteCalls++
+      if (noteMode === 'conflict') throw Object.assign(Error('其他护士已修改'), { code: 'NOTE_VERSION_CONFLICT' })
+      if (noteJob) await noteJob.promise
+      return { reservation: { id, staffNote: data.note.trim(), staffNoteVersion: data.version + 1, staffNoteUpdatedAt: '2026-11-14T01:00:00Z' } }
+    },
+    getBedReservation: async id => ({ reservation: { id, staffNote: '其他护士的备注', staffNoteVersion: 2 } })
+  }).instance
+  const noteRecord = { id: 902, staffNote: '原备注', staffNoteVersion: 1 }
+  notePage.changeNote(noteRecord, { detail: { value: '我的修改' } })
+  await notePage.saveNote(noteRecord)
+  assert.equal(notePage.noteEditors[902].text, '我的修改', 'Conflict preserves unsaved text')
+  assert.equal(notePage.noteEditors[902].conflict, true)
+  await notePage.refreshNote(noteRecord)
+  assert.equal(notePage.noteEditors[902].text, '其他护士的备注'); assert.equal(notePage.noteEditors[902].version, 2)
+  notePage.changeNote(noteRecord, { detail: { value: '已核对的备注' } })
+  noteMode = 'success'; noteJob = deferred()
+  const noteSaving = notePage.saveNote(noteRecord); await tick()
+  await notePage.saveNote(noteRecord)
+  assert.equal(noteCalls, 2, 'Repeated save click is ignored while a note is saving')
+  noteJob.resolve(); await noteSaving
+  assert.equal(noteRecord.staffNote, '已核对的备注'); assert.equal(notePage.noteEditors[902].dirty, false)
+  assert.equal(noteRecord.staffNoteVersion, 3)
+  const lookupForm = { ...validForm, doctor: '饶志远', tubeTypes: ['胃管'], otherTube: '', specialNeeds: '需要协助' }
+  let lookupCalls = 0, lookupJob = deferred(), lookupCaptchaRefresh = 0, submissionCaptchaRefresh = 0
+  const patientLookup = component('pages/bed-reservation/index.vue', { ...helpers, ReservationCaptcha: {}, lookupBedReservations: async () => { lookupCalls++; return lookupJob.promise } }).instance
+  patientLookup.$nextTick = async () => {}
+  patientLookup.$refs = { lookupCaptchaControl: { refresh: async () => { lookupCaptchaRefresh++ } }, captchaControl: { refresh: async () => { submissionCaptchaRefresh++ } } }
+  patientLookup.lookupPhone = validForm.phone; patientLookup.lookupIdCard = validForm.idCard; patientLookup.lookupCaptcha = { id: 'proof', code: 'a2b3' }
+  const finding = patientLookup.searchPreviousReservations(); await tick()
+  await patientLookup.searchPreviousReservations(); assert.equal(lookupCalls, 1)
+  const previousBooking = { id: 903, name: validForm.name, status: '预约成功', canRebook: true, form: lookupForm }
+  lookupJob.resolve({ pending: false, items: [previousBooking] }); await finding
+  assert.equal(patientLookup.lookupResults.length, 1); assert.equal(lookupCaptchaRefresh, 1)
+  await patientLookup.usePreviousReservation(patientLookup.lookupResults[0])
+  assert.equal(patientLookup.rebooking, true); assert.equal(patientLookup.form.name, validForm.name)
+  assert.equal(patientLookup.form.reservationDate, '', 'A new date is optional and never copied from an old booking')
+  assert.equal(patientLookup.form.doctor, '饶志远'); assert.equal(submissionCaptchaRefresh, 1)
+  assert.notEqual(patientLookup.form.tubeTypes, lookupForm.tubeTypes, 'Copied care arrays do not mutate history')
+  patientLookup.lookupPending = true; patientLookup.rebooking = false
+  await patientLookup.usePreviousReservation(patientLookup.lookupResults[0]); assert.equal(patientLookup.rebooking, false)
+  patientLookup.lookupPending = false
+  patientLookup.changeLookup('phone', { detail: { value: '13900139000' } })
+  assert.equal(patientLookup.lookupResults.length, 0, 'Changing identity clears previous search results')
+  assert.equal(patientLookup.lookupSearched, false)
+  await patientLookup.cancelPublicRebook()
+  assert.equal(patientLookup.form.name, ''); assert.equal(patientLookup.rebooking, false)
+  console.log('PASS: per-record note drafts/save locks/conflict recovery; identity lookup locks, captcha refresh, pending guards and patient rebooking prefills')
   const emitted = []
   let imageFailure = false
   const widget = component('components/reservation-captcha/index.vue', {

@@ -93,7 +93,7 @@ function instance(page) {
   assert.equal(storage.size, 0)
   login.goHome()
   assert.equal(calls.at(-1).url, auth.HOME_ROUTE)
-  const reservationPage = loadPage('pages/bed-reservation/index.vue', { ...auth, ...require('../reservation-validation'), ReservationCaptcha: {} })
+  const reservationPage = loadPage('pages/bed-reservation/index.vue', { ...auth, ...require('../reservation-validation'), formatReservationTime: value => value, ReservationCaptcha: {} })
   const reservation = instance(reservationPage)
   assert.deepEqual(JSON.parse(JSON.stringify(reservation.form)), { name: '', gender: '', age: '', phone: '', idCard: '', diagnosis: '', reservationDate: '', specialNeeds: '', doctor: '', tubeTypes: [], otherTube: '' })
   assert.deepEqual(Array.from(reservation.genderOptions), ['男', '女'])

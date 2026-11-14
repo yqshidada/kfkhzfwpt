@@ -1,5 +1,5 @@
 const crypto = require('crypto')
-const { getReservationFieldErrors, normalizeIdCard, beijingDate, normalizeReservationCare } = require('./reservation-validation')
+const { getReservationFieldErrors, normalizeIdCard, beijingDate, normalizeReservationCare, isValidMobile, isValidIdCard } = require('./reservation-validation')
 const { encryptIdCard, decryptIdCard, fingerprintIdCard } = require('./reservation-identity')
 
 const { createReservationCaptcha } = require('./reservation-captcha')
@@ -40,6 +40,7 @@ async function initializeReservationTable(pool) {
     'reservation_date CHAR(10) NULL, special_needs VARCHAR(500) NULL, repeat_reservation TINYINT UNSIGNED NULL,' +
     'rebooked_from_id BIGINT UNSIGNED NULL, rebooked_by_user_id BIGINT UNSIGNED NULL,' +
     'doctor VARCHAR(20) NULL, tube_types TEXT NULL, other_tube VARCHAR(100) NULL,' +
+    'staff_note TEXT NULL, staff_note_version INT UNSIGNED NOT NULL DEFAULT 0, staff_note_updated_at_ms BIGINT UNSIGNED NULL, staff_note_updated_by_user_id BIGINT UNSIGNED NULL,' +
     'cancelled_at_ms BIGINT UNSIGNED NULL, cancelled_by_user_id BIGINT UNSIGNED NULL,' +
     'id_card_encrypted VARCHAR(160) NULL,' +
     'identity_fingerprint VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,' +
@@ -59,6 +60,8 @@ async function initializeReservationTable(pool) {
   }
   // Old rows remain nullable: do not delete/merge old appointments or fabricate identities.
   for (const [name, definition] of [
+    ['staff_note', 'TEXT NULL'], ['staff_note_version', 'INT UNSIGNED NOT NULL DEFAULT 0'],
+    ['staff_note_updated_at_ms', 'BIGINT UNSIGNED NULL'], ['staff_note_updated_by_user_id', 'BIGINT UNSIGNED NULL'],
     ['reservation_date', 'CHAR(10) NULL'],
     ['repeat_reservation', 'TINYINT UNSIGNED NULL'],
     ['doctor', 'VARCHAR(20) NULL'], ['tube_types', 'TEXT NULL'], ['other_tube', 'VARCHAR(100) NULL'],
@@ -113,6 +116,8 @@ function mapReservation(row, detail = false) {
   const confirmedMs = row.confirmed_at_ms == null ? null : Number(row.confirmed_at_ms)
   return {
     id: row.id, name: row.name, gender: row.gender, age: row.age, phone: row.phone,
+    staffNote: row.staff_note || '', staffNoteVersion: Number(row.staff_note_version || 0),
+    staffNoteUpdatedAt: row.staff_note_updated_at_ms == null ? null : new Date(Number(row.staff_note_updated_at_ms)).toISOString(),
     createdAt: new Date(createdMs).toISOString(),
     reservationDate: row.reservation_date || null,
     repeatReservation: row.repeat_reservation == null ? null : Number(row.repeat_reservation) === 1 ? '是' : '否',
@@ -161,6 +166,24 @@ function registerReservationRoutes(app, { getPool, requireAuth, captcha = create
   }
   app.get('/api/bed-reservations/captcha', handle(async (req, res) => {
     res.json(captcha.issue(req.ip))
+  }))
+  // Patient lookup requires an exact phone/identity match plus a fresh captcha.
+  // Never include staff notes or encrypted identifiers in this public response.
+  app.post('/api/bed-reservations/lookup', handle(async (req, res) => {
+    const phone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : ''
+    const idCard = normalizeIdCard(req.body?.idCard)
+    if (!isValidMobile(phone) || !isValidIdCard(idCard)) throw fail('请输入正确的预约手机号和身份证号')
+    captcha.verify(req.body.captcha, req.ip, 'lookup:' + crypto.randomBytes(24).toString('hex'))
+    const pool = getPool(), fingerprint = fingerprintIdCard(idCard)
+    const [rows] = await pool.execute('SELECT * FROM bed_reservations WHERE phone = ? AND (identity_fingerprint = ? OR identity_fingerprint IS NULL) ORDER BY id DESC LIMIT 20', [phone, fingerprint])
+    const matches = rows.filter(row => row.id_card_encrypted && normalizeIdCard(decryptIdCard(row.id_card_encrypted, row.request_id)) === idCard).slice(0, 10)
+    const pending = matches.length ? await hasPendingReservation(pool, { idCard, phone, name: matches[0].name }, fingerprint) : false
+    res.json({ pending, items: matches.map(row => {
+      const record = mapReservation(row, true)
+      return { id: record.id, name: record.name, createdAt: record.createdAt, status: record.status, reservationDate: record.reservationDate, canRebook: !pending,
+        form: { name: record.name, gender: record.gender, age: String(record.age), phone, idCard, diagnosis: record.diagnosis,
+          doctor: record.doctor === '姚志远' ? '饶志远' : record.doctor, tubeTypes: record.tubeTypes, otherTube: record.otherTube, specialNeeds: record.specialNeeds } }
+    }) })
   }))
   // Public creation returns a receipt only; never expose patient data anonymously.
   app.post('/api/bed-reservations', handle(async (req, res) => {
@@ -235,7 +258,7 @@ function registerReservationRoutes(app, { getPool, requireAuth, captcha = create
       const pageClauses = cursor === null ? clauses : clauses.concat('id < ?')
       const pageValues = cursor === null ? values : values.concat(cursor)
       const pageWhere = pageClauses.length ? ' WHERE ' + pageClauses.join(' AND ') : ''
-      ;[rows] = await connection.execute('SELECT id, name, gender, age, phone, reservation_date, repeat_reservation, created_at_ms, confirmed_at_ms, cancelled_at_ms FROM bed_reservations' + pageWhere + ' ORDER BY id DESC LIMIT ' + (limit + 1), pageValues)
+      ;[rows] = await connection.execute('SELECT id, name, gender, age, phone, reservation_date, repeat_reservation, created_at_ms, confirmed_at_ms, cancelled_at_ms, staff_note, staff_note_version, staff_note_updated_at_ms FROM bed_reservations' + pageWhere + ' ORDER BY id DESC LIMIT ' + (limit + 1), pageValues)
       await connection.commit()
     } catch (error) {
       await connection.rollback()
@@ -258,6 +281,18 @@ function registerReservationRoutes(app, { getPool, requireAuth, captcha = create
   }
   app.get('/api/bed-reservations/:id', requireAuth, handle(async (req, res) => {
     res.json({ reservation: mapReservation(await find(validId(req.params.id)), true) })
+  }))
+
+  app.post('/api/bed-reservations/:id/note', requireAuth, handle(async (req, res) => {
+    const id = validId(req.params.id), note = req.body && req.body.note, version = req.body && req.body.version
+    if (typeof note !== 'string' || note.length > 1000) throw fail('备注最多1000字')
+    if (!Number.isSafeInteger(version) || version < 0 || version >= 4294967295) throw fail('备注版本无效，请刷新后重试')
+    const [result] = await getPool().execute('UPDATE bed_reservations SET staff_note = ?, staff_note_version = staff_note_version + 1, staff_note_updated_at_ms = ?, staff_note_updated_by_user_id = ? WHERE id = ? AND staff_note_version = ?', [note.trim(), Date.now(), req.auth.sub, id, version])
+    if (!result.affectedRows) {
+      await find(id)
+      throw Object.assign(fail('备注已被其他护士修改，请先加载最新备注后重新编辑', 409), { code: 'NOTE_VERSION_CONFLICT' })
+    }
+    res.json({ reservation: mapReservation(await find(id)) })
   }))
 
   // Authenticated queue actions only. Preserve source history when creating a new booking.

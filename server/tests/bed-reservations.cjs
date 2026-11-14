@@ -196,6 +196,21 @@ async function freePort() {
     const otherLogin = await request('/api/auth/login', 'POST', { username: '13900139000', password: 'ReservationTest1234' })
     assert.equal(otherLogin.status, 200)
     assert.equal((await request(url + '/' + id, 'GET', undefined, otherLogin.data.token)).status, 200)
+    // Shared staff notes: authenticated persistence, clearing, limits and conflict safety.
+    assert.equal((await request(url + '/' + id + '/note', 'POST', { note: '私密护理备注', version: 0 })).status, 401)
+    let savedNote = await request(url + '/' + id + '/note', 'POST', { note: '  私密护理备注  ', version: 0 }, token)
+    assert.equal(savedNote.status, 200); assert.equal(savedNote.data.reservation.staffNote, '私密护理备注')
+    assert.equal(savedNote.data.reservation.staffNoteVersion, 1)
+    assert.ok(savedNote.data.reservation.staffNoteUpdatedAt)
+    assert.equal((await request(url, 'GET', undefined, otherLogin.data.token)).data.items.find(row => row.id === id).staffNote, '私密护理备注')
+    assert.equal((await request(url + '/' + id + '/note', 'POST', { note: 'x'.repeat(1001), version: 1 }, token)).status, 400)
+    assert.equal((await request(url + '/' + id + '/note', 'POST', { note: {}, version: 1 }, token)).status, 400)
+    assert.equal((await request(url + '/' + id + '/note', 'POST', { note: '', version: '1' }, token)).status, 400)
+    const noteWrites = await Promise.all([token, otherLogin.data.token].map((staff, index) => request(url + '/' + id + '/note', 'POST', { note: '并发备注' + index, version: 1 }, staff)))
+    assert.deepEqual(noteWrites.map(row => row.status).sort(), [200, 409])
+    assert.equal(noteWrites.find(row => row.status === 409).data.code, 'NOTE_VERSION_CONFLICT')
+    assert.equal((await request(url + '/' + id + '/note', 'POST', { note: '', version: 2 }, token)).data.reservation.staffNote, '')
+    assert.equal((await request(url + '/999999/note', 'POST', { note: '', version: 0 }, token)).status, 404)
     const earlier = Date.now() - 216000000
     await db.execute('UPDATE bed_reservations SET created_at_ms = ? WHERE id = ?', [earlier, id])
     const results = await Promise.all([token, otherLogin.data.token, token].map(staffToken => request(url + '/' + id + '/confirm', 'POST', { confirmedAt: '2030-01-01' }, staffToken)))
@@ -558,6 +573,63 @@ async function freePort() {
     await initializeReservationTable(db)
     assert.deepEqual((await db.query('SELECT id, doctor, tube_types, other_tube FROM bed_reservations ORDER BY id'))[0], beforeCareMigration, 'Migration retries preserve care choices and legacy nulls')
     testIp = previousIp
+    // Public identity lookup and patient rebooking use isolated subjects and rate buckets.
+    testIp = '192.0.2.180'
+    const returningForm = { ...form, idCard: testId(700), doctor: '饶志远', tubeTypes: ['胃管'], specialNeeds: '需要协助' }
+    assert.equal((await submitFresh(returningForm)).status, 201)
+    const returningRow = (await db.execute('SELECT id FROM bed_reservations WHERE name = ? AND phone = ? ORDER BY id DESC LIMIT 1', [form.name, form.phone]))[0][0]
+    async function lookupPatient(overrides = {}, proof) {
+      const fresh = proof || { id: (await request(url + '/captcha')).data.id, code: 'A2B3' }
+      return request(url + '/lookup', 'POST', { phone: returningForm.phone, idCard: returningForm.idCard, captcha: fresh, ...overrides })
+    }
+    assert.equal((await request(url + '/lookup', 'POST', { phone: form.phone, idCard: returningForm.idCard })).data.code, 'CAPTCHA_INVALID')
+    const wrongProof = await request(url + '/captcha')
+    assert.equal((await lookupPatient({}, { id: wrongProof.data.id, code: 'ZZ99' })).data.code, 'CAPTCHA_INVALID')
+    const lookupProof = { id: (await request(url + '/captcha')).data.id, code: 'a2b3' }
+    const pendingLookup = await lookupPatient({}, lookupProof)
+    assert.equal(pendingLookup.status, 200); assert.equal(pendingLookup.data.pending, true)
+    assert.equal(pendingLookup.headers.get('cache-control'), 'no-store')
+    assert.equal(pendingLookup.data.items.length, 1); assert.equal(pendingLookup.data.items[0].canRebook, false)
+    assert.equal((await lookupPatient({}, lookupProof)).data.code, 'CAPTCHA_USED', 'Lookup proof is single use')
+    assert.equal((await lookupPatient({ phone: '13900139000' })).data.items.length, 0)
+    assert.equal((await lookupPatient({ idCard: testId(701) })).data.items.length, 0)
+    await db.execute('UPDATE bed_reservations SET identity_fingerprint = NULL WHERE id = ?', [returningRow.id])
+    assert.equal((await lookupPatient()).data.items.length, 1, 'Legacy encrypted identities can be looked up')
+    await request(url + '/' + returningRow.id + '/confirm', 'POST', {}, token)
+    await request(url + '/' + returningRow.id + '/note', 'POST', { note: '私密护理备注', version: 0 }, token)
+    const confirmedLookup = await lookupPatient()
+    assert.equal(confirmedLookup.data.pending, false)
+    const previous = confirmedLookup.data.items[0]
+    assert.equal(previous.canRebook, true); assert.equal(previous.form.idCard, returningForm.idCard)
+    assert.equal(previous.form.doctor, '饶志远'); assert.deepEqual(previous.form.tubeTypes, ['胃管'])
+    for (const key of ['staffNote', 'staffNoteVersion', 'staff_note', 'payload_hash', 'identity_fingerprint', 'id_card_encrypted']) assert.ok(!JSON.stringify(confirmedLookup.data).includes(key), 'Lookup must exclude staff/internal field: ' + key)
+    assert.ok(!JSON.stringify(confirmedLookup.data).includes('私密护理备注'))
+    const patientAgain = await submitFresh({ ...previous.form, reservationDate: '', repeatReservation: '是' })
+    assert.equal(patientAgain.status, 201)
+    assert.equal((await submitFresh({ ...previous.form, repeatReservation: '是' })).status, 409, 'Patient rebooking cannot bypass pending guard')
+    const newReturning = (await db.execute('SELECT staff_note, repeat_reservation FROM bed_reservations WHERE id > ? ORDER BY id DESC LIMIT 1', [returningRow.id]))[0][0]
+    assert.equal(newReturning.repeat_reservation, 1); assert.equal(newReturning.staff_note, null, 'Private notes are not copied to new bookings')
+    testIp = '192.0.2.181'
+    assert.equal((await request(url + '/lookup', 'POST', { phone: form.phone, idCard: returningForm.idCard, captcha: lookupProof })).data.code, 'CAPTCHA_EXPIRED', 'Lookup captcha is IP bound')
+    let lookupThrottled = false
+    for (let attempt = 0; attempt < 31; attempt++) if ((await request(url + '/lookup', 'POST', {})).status === 429) { lookupThrottled = true; break }
+    assert.ok(lookupThrottled, 'Public lookup has body-size and IP rate limits')
+    // Account rotation preserves the user ID, ownership, and every other account.
+    const privateEnv = Object.entries({ ...settings, DB_NAME: database, TEST_LOGIN_PHONE: '13800138000', TEST_LOGIN_PASSWORD: 'ReservationTest1234' }).map(([key, value]) => key + '=' + value).join('\n') + '\n'
+    fs.writeFileSync(path.join(work, '.env'), privateEnv, { mode: 0o600 })
+    const { updateAccount } = require('../../scripts/update-login-account.cjs')
+    const beforeAccounts = (await db.query('SELECT id, username FROM system_users ORDER BY id'))[0]
+    await assert.rejects(updateAccount(work, { username: '13900139000', password: 'AccountFixture123' }), /another account/)
+    assert.equal(fs.readFileSync(path.join(work, '.env'), 'utf8'), privateEnv)
+    await updateAccount(work, { username: '13700137000', password: 'AccountFixture123' })
+    const accountLogin = await request('/api/auth/login', 'POST', { username: '13700137000', password: 'AccountFixture123' })
+    assert.equal(accountLogin.status, 200)
+    assert.equal(accountLogin.data.user.id, beforeAccounts.find(row => row.username === '13800138000').id)
+    assert.equal((await request('/api/auth/login', 'POST', { username: '13800138000', password: 'ReservationTest1234' })).status, 401)
+    assert.equal((await db.query('SELECT COUNT(*) AS total FROM system_users'))[0][0].total, beforeAccounts.length)
+    const envAfter = fs.readFileSync(path.join(work, '.env'), 'utf8')
+    assert.ok(envAfter.includes('TEST_LOGIN_PHONE=13700137000')); assert.ok(envAfter.includes('TEST_LOGIN_PASSWORD=AccountFixture123'))
+    testIp = previousIp
     const rawRequest = (body, contentType = 'application/json') => fetch(base + url, { method: 'POST', headers: { 'content-type': contentType, 'x-forwarded-for': '192.0.2.25' }, body })
     assert.equal((await rawRequest(JSON.stringify({ padding: 'a'.repeat(9000) }))).status, 413)
     const malformed = await rawRequest('{"idCard":"PRIVATE_PARSER_TEST"')
@@ -576,7 +648,7 @@ async function freePort() {
       if (response.status === 429) { captchaThrottled = true; assert.ok(response.headers.get('retry-after')); break }
     }
     assert.equal(captchaThrottled, true, 'Captcha generation is independently rate limited')
-    console.log('PASS: doctor/tube choices, conditional other input, persistence/detail/privacy, source care copied on rebooking, care-aware hashes and old receipt compatibility, additive migrations; authenticated nurse rebooking/deletion, source history retention, rebooking date selection/reminders, new identity encryption, retry/concurrency/duplicate protection, scoped deletion; patient optional tube/skin intake and private contact persistence, optional dates and repeat field persistence/defaults, legacy receipts, repeat-option duplicate prevention, staff-only tomorrow reminders, China day boundaries, reminder counts/filters/pagination/cancellations, pending duplicate prevention, concurrent different-request protection, confirmed rebooking, legacy fallback, fingerprint privacy, captcha missing/wrong/replay rejection, concurrent bound submissions, independent generation throttling, encrypted identity storage, legacy migration, parser limits, error privacy, validation, public submission, authenticated shared queue, timestamps, exact days, idempotency, concurrent confirmation, privacy, pagination, search and rate limiting')
+    console.log('PASS: protected shared staff notes, optimistic conflicts/limits/clearing; phone+identity+single-use captcha lookup, private-note exclusion, historical lookup, patient rebooking and pending guards; doctor/tube choices, conditional other input, persistence/detail/privacy, source care copied on rebooking, care-aware hashes and old receipt compatibility, additive migrations; authenticated nurse rebooking/deletion, source history retention, rebooking date selection/reminders, new identity encryption, retry/concurrency/duplicate protection, scoped deletion; patient optional tube/skin intake and private contact persistence, optional dates and repeat field persistence/defaults, legacy receipts, repeat-option duplicate prevention, staff-only tomorrow reminders, China day boundaries, reminder counts/filters/pagination/cancellations, pending duplicate prevention, concurrent different-request protection, confirmed rebooking, legacy fallback, fingerprint privacy, captcha missing/wrong/replay rejection, concurrent bound submissions, independent generation throttling, encrypted identity storage, legacy migration, parser limits, error privacy, validation, public submission, authenticated shared queue, timestamps, exact days, idempotency, concurrent confirmation, privacy, pagination, search and rate limiting')
   } finally {
     if (child && child.exitCode === null) { const exited = new Promise(resolve => child.once('exit', resolve)); child.kill(); await exited }
     assert.ok(/^rehab_reservation_test_[a-f0-9]{12}$/.test(database))

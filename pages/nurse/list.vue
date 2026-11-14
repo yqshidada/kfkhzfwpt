@@ -49,6 +49,13 @@
 				<view class="record-row record-row--muted"><text>提交时间：{{ formatReservationTime(record.createdAt) }}</text></view>
 				<view class="record-row"><text>预约状态</text><text class="status-tag" :class="{ 'status-tag--success': record.status === '预约成功', 'status-tag--cancelled': record.status === '取消预约' }">{{ record.status }}</text></view>
 				<view v-if="record.status === '预约成功'" class="record-row waiting-days"><text>平均约床时长：{{ formatWaitingDays(record.waitingDays) }} 天</text></view>
+				<view class="staff-note" @tap.stop>
+					<view class="staff-note-heading"><text>护士备注</text><text class="staff-note-count">{{ (noteEditors[record.id] ? noteEditors[record.id].text : record.staffNote || '').length }}/1000</text></view>
+					<textarea class="staff-note-input" :value="noteEditors[record.id] ? noteEditors[record.id].text : record.staffNote || ''" maxlength="1000" :disabled="!!(noteEditors[record.id] && noteEditors[record.id].saving)" placeholder="护长、护士可在此填写备注" @input="changeNote(record, $event)" @tap.stop />
+					<text v-if="noteEditors[record.id] && noteEditors[record.id].error" class="staff-note-error">{{ noteEditors[record.id].error }}</text>
+					<view class="staff-note-actions"><text class="staff-note-updated">{{ record.staffNoteUpdatedAt ? '更新于 ' + formatReservationTime(record.staffNoteUpdatedAt) : '尚无备注' }}</text><button class="note-save" size="mini" :loading="!!(noteEditors[record.id] && noteEditors[record.id].saving)" :disabled="!noteEditors[record.id] || !noteEditors[record.id].dirty || noteEditors[record.id].saving" @tap.stop="saveNote(record)">保存备注</button></view>
+					<text v-if="noteEditors[record.id] && noteEditors[record.id].conflict" class="note-refresh" @tap.stop="refreshNote(record)">加载最新备注（将替换当前输入）</text>
+				</view>
 				<view class="record-actions" @tap.stop>
 					<button v-if="record.status !== '预约中'" class="record-action rebook-action" size="mini" :disabled="actionBusy || !!rebookTarget" @tap.stop="openRebook(record)">再次预约</button>
 					<button class="record-action delete-action" size="mini" :disabled="actionBusy || !!rebookTarget" @tap.stop="handleDeleteReservation(record)">删除预约</button>
@@ -83,7 +90,7 @@
 </template>
 
 <script>
-	import { getDischargeRecords, getBedReservations, getBedReservationReminders, rebookBedReservation, deleteBedReservation } from '../../utils/api.js'
+	import { getDischargeRecords, getBedReservations, getBedReservationReminders, rebookBedReservation, deleteBedReservation, updateBedReservationNote, getBedReservation } from '../../utils/api.js'
 	import { formatReservationTime, formatWaitingDays, createReservationRequestId } from '../../utils/reservation.js'
 
 	import { beijingDate, isValidReservationDate } from '../../server/reservation-validation.js'
@@ -94,7 +101,7 @@
 	export default {
 		data() {
 			return {
-				selectFlow: false,
+				selectFlow: false, noteEditors: {},
 				actionBusy: false, rebookTarget: null, rebookDate: '', rebookError: '', rebookRequestId: '', minimumRebookDate: beijingDate(),
 				reminders: { date: '', total: 0, loading: false, error: '', version: 0 },
 				activeTab: 'patients',
@@ -123,6 +130,38 @@
 		onReachBottom() { this.loadMore() },
 		onPullDownRefresh() { Promise.all([this.reload(), this.activeTab === 'reservations' ? this.refreshReminders() : Promise.resolve()]).finally(() => uni.stopPullDownRefresh()) },
 		methods: {
+			ensureNoteEditor(record) {
+				if (!this.noteEditors[record.id]) this.noteEditors = { ...this.noteEditors, [record.id]: { text: record.staffNote || '', version: record.staffNoteVersion || 0, dirty: false, saving: false, error: '', conflict: false } }
+				return this.noteEditors[record.id]
+			},
+			changeNote(record, event) {
+				const editor = this.ensureNoteEditor(record)
+				if (editor.saving) return
+				editor.text = String(event.detail.value || '').slice(0, 1000); editor.dirty = true; editor.error = ''
+			},
+			async saveNote(record) {
+				const editor = this.ensureNoteEditor(record)
+				if (!editor.dirty || editor.saving) return
+				editor.saving = true; editor.error = ''
+				try {
+					const result = await updateBedReservationNote(record.id, { note: editor.text, version: editor.version })
+					Object.assign(record, result.reservation)
+					editor.text = record.staffNote; editor.version = record.staffNoteVersion; editor.dirty = false; editor.conflict = false
+					uni.showToast({ title: '备注已保存', icon: 'success' })
+				} catch (error) { editor.error = error.message || '备注保存失败，请重试'; editor.conflict = error.code === 'NOTE_VERSION_CONFLICT' }
+				finally { editor.saving = false }
+			},
+			async refreshNote(record) {
+				const editor = this.ensureNoteEditor(record)
+				if (editor.saving) return
+				editor.saving = true
+				try {
+					const result = await getBedReservation(record.id)
+					Object.assign(record, result.reservation)
+					editor.text = record.staffNote; editor.version = record.staffNoteVersion; editor.dirty = false; editor.conflict = false; editor.error = ''
+				} catch (error) { editor.error = error.message || '加载备注失败，请重试' }
+				finally { editor.saving = false }
+			},
 			openRebook(record) {
 				if (this.actionBusy || this.rebookTarget || !record || record.status === '预约中') return
 				uni.hideToast()
@@ -253,7 +292,14 @@
 					const result = await request({ keyword: list.queryKeyword, cursor: list.cursor, limit: 20, ...(tab === 'reservations' ? { status: list.queryStatus, reminder: list.queryReminderOnly ? 'tomorrow' : '' } : {}) })
 					if (version !== list.version) return
 					list.records = reset ? result.items : list.records.concat(result.items)
-					if (tab === 'reservations') list.total = result.total
+					if (tab === 'reservations') {
+						list.total = result.total
+						for (const record of result.items) {
+							const editor = this.noteEditors[record.id]
+							if (editor && (editor.dirty || editor.saving)) continue
+							this.noteEditors = { ...this.noteEditors, [record.id]: { text: record.staffNote || '', version: record.staffNoteVersion || 0, dirty: false, saving: false, error: '', conflict: false } }
+						}
+					}
 					list.cursor = result.nextCursor
 					list.hasMore = result.hasMore
 					list.loaded = true
@@ -338,4 +384,12 @@
 	.dialog-cancel { color: #4d5a68; background: #f0f2f5; }
 	.dialog-confirm { color: #fff; background: #1677ed; }
 	.dialog-actions button[disabled] { color: #9ba5b1; background: #f0f2f5; }
+	.staff-note { margin-top: 22rpx; padding-top: 20rpx; border-top: 1rpx solid #edf0f4; }
+	.staff-note-heading, .staff-note-actions { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; color: #526273; font-size: 26rpx; }
+	.staff-note-count, .staff-note-updated { color: #8a96a3; font-size: 22rpx; }
+	.staff-note-input { box-sizing: border-box; width: 100%; height: 142rpx; padding: 16rpx; margin: 14rpx 0; border: 1rpx solid #dfe5ed; border-radius: 8rpx; background: #fafbfd; color: #344253; font-size: 27rpx; line-height: 38rpx; }
+	.note-save { flex-shrink: 0; margin: 0; padding: 0 20rpx; color: #fff; background: #1677ed; font-size: 24rpx; line-height: 52rpx; }
+	.note-save[disabled] { color: #8a96a3; background: #edf0f4; }
+	.staff-note-error { display: block; margin-bottom: 12rpx; color: #d94b49; font-size: 24rpx; }
+	.note-refresh { display: block; margin-top: 12rpx; color: #1677ed; font-size: 24rpx; }
 </style>

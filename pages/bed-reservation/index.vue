@@ -5,6 +5,26 @@
 		</view>
 		<view class="booking-notice" role="note"><text>{{ bookingNotice }}</text></view>
 		<block v-if="!submitted">
+			<view class="lookup-card">
+				<view class="lookup-heading" @tap="toggleLookup"><text>预约查询 / 再次预约</text><text class="lookup-toggle">{{ lookupOpen ? '收起' : '展开查询' }}</text></view>
+				<view v-if="lookupOpen">
+					<text class="lookup-hint">填写原预约手机号和身份证号，查询最近10条预约。身份信息须与原预约一致。</text>
+					<input :value="lookupPhone" class="lookup-input" type="number" maxlength="11" placeholder="请输入原预约手机号" :disabled="submissionBusy" @input="changeLookup('phone', $event)" />
+					<input :value="lookupIdCard" class="lookup-input" type="idcard" maxlength="18" placeholder="请输入身份证号" :disabled="submissionBusy" @input="changeLookup('idCard', $event)" />
+					<reservation-captcha ref="lookupCaptchaControl" v-model="lookupCaptcha" :disabled="submissionBusy" />
+					<button class="lookup-search" :loading="lookupBusy" :disabled="submissionBusy" @tap="searchPreviousReservations">查询预约</button>
+					<text v-if="lookupError" class="lookup-error">{{ lookupError }}</text>
+					<text v-if="lookupSearched && !lookupResults.length && !lookupError" class="lookup-hint">未找到匹配的预约，请核对原预约信息，或在下方填写新预约。</text>
+					<text v-if="lookupPending" class="lookup-warning">您已有预约中的记录，请等待康复科电话通知，不能重复预约。</text>
+					<view v-for="record in lookupResults" :key="record.id" class="lookup-result">
+						<view class="lookup-result-heading"><text>{{ record.name }}</text><text>{{ record.status }}</text></view>
+						<text class="lookup-hint">提交时间：{{ formatReservationTime(record.createdAt) }}</text>
+						<text class="lookup-hint">预约日期：{{ record.reservationDate || '未填写' }}</text>
+						<button size="mini" class="lookup-rebook" :disabled="submissionBusy || !record.canRebook" @tap="usePreviousReservation(record)">{{ record.canRebook ? '再次预约' : '预约中，暂不可再次预约' }}</button>
+					</view>
+				</view>
+			</view>
+			<view v-if="rebooking" class="rebooking-hint"><text>已带入原预约信息，请核对年龄、医生及病情等内容，选择新的预约日期（选填），输入下方验证码后提交。</text><text class="lookup-toggle" @tap="cancelPublicRebook">清空，填写新预约</text></view>
 			<view class="form-card">
 				<view class="card-title"><view class="title-mark"></view><text>预约信息</text></view>
 				<view class="form-field">
@@ -99,9 +119,9 @@
 
 <script>
 	import ReservationCaptcha from '../../components/reservation-captcha/index.vue'
-	import { createBedReservation } from '../../utils/api.js'
-	import { createReservationRequestId } from '../../utils/reservation.js'
-	import { getReservationFieldErrors, normalizeIdCard, beijingDate, RESERVATION_DOCTORS, RESERVATION_TUBES, normalizeReservationCare } from '../../server/reservation-validation.js'
+	import { createBedReservation, lookupBedReservations } from '../../utils/api.js'
+	import { createReservationRequestId, formatReservationTime } from '../../utils/reservation.js'
+	import { getReservationFieldErrors, normalizeIdCard, beijingDate, RESERVATION_DOCTORS, RESERVATION_TUBES, normalizeReservationCare, isValidMobile, isValidIdCard } from '../../server/reservation-validation.js'
 
 	export default {
 		components: { ReservationCaptcha },
@@ -111,17 +131,63 @@
 				genderOptions: ['男', '女'], minimumDate: beijingDate(),
 				bookingNotice: '⚠️预约仅排队登记，须等康复科电话通知入院，未通知请勿自行来院。',
 				confirming: false, submitting: false, submitted: false, requestId: '', submittedPayload: '',
+				lookupOpen: false, lookupPhone: '', lookupIdCard: '', lookupCaptcha: { id: '', code: '' },
+				lookupResults: [], lookupPending: false, lookupSearched: false, lookupError: '', lookupBusy: false, lookupVersion: 0, rebooking: false,
 				fieldErrors: {}, submissionError: '', captcha: { id: '', code: '' },
 				form: { name: '', gender: '', age: '', phone: '', idCard: '', diagnosis: '', reservationDate: '', specialNeeds: '', doctor: '', tubeTypes: [], otherTube: '' }
 			}
 		},
 		onShow() { this.minimumDate = beijingDate() },
 		computed: {
-			submissionBusy() { return this.confirming || this.submitting },
+			submissionBusy() { return this.confirming || this.submitting || this.lookupBusy },
 			doctorIndex() { return Math.max(0, this.doctorOptions.indexOf(this.form.doctor)) },
 			genderIndex() { return Math.max(0, this.genderOptions.indexOf(this.form.gender)) }
 		},
 		methods: {
+			formatReservationTime,
+			toggleLookup() { if (!this.submissionBusy) this.lookupOpen = !this.lookupOpen },
+			changeLookup(key, event) {
+				if (this.submissionBusy) return
+				if (key === 'phone') this.lookupPhone = String(event.detail.value || '').replace(/\D/g, '').slice(0, 11)
+				else this.lookupIdCard = String(event.detail.value || '').replace(/[^0-9x]/gi, '').toUpperCase().slice(0, 18)
+				this.lookupVersion++; this.lookupResults = []; this.lookupPending = false; this.lookupSearched = false; this.lookupError = ''
+			},
+			async searchPreviousReservations() {
+				if (this.submissionBusy) return
+				const phone = this.lookupPhone.trim(), idCard = normalizeIdCard(this.lookupIdCard)
+				if (!isValidMobile(phone) || !isValidIdCard(idCard)) { this.lookupError = '请输入正确的预约手机号和身份证号'; return }
+				if (!this.lookupCaptcha.id || !/^[a-z0-9]{4}$/i.test(this.lookupCaptcha.code.trim())) { this.lookupError = '请输入查询图片中的4位验证码'; return }
+				const version = ++this.lookupVersion
+				this.lookupBusy = true; this.lookupError = ''; this.lookupResults = []; this.lookupPending = false; this.lookupSearched = false
+				try {
+					const result = await lookupBedReservations({ phone, idCard, captcha: { ...this.lookupCaptcha } })
+					if (version !== this.lookupVersion) return
+					this.lookupResults = result.items; this.lookupPending = result.pending; this.lookupSearched = true
+				} catch (error) { if (version === this.lookupVersion) this.lookupError = error.message || '查询失败，请重试' }
+				finally {
+					if (version === this.lookupVersion) {
+						this.lookupBusy = false; this.lookupCaptcha = { id: '', code: '' }
+						await this.$nextTick()
+						if (this.$refs && this.$refs.lookupCaptchaControl) await this.$refs.lookupCaptchaControl.refresh()
+					}
+				}
+			},
+			async usePreviousReservation(record) {
+				if (this.submissionBusy || this.lookupPending || !record.canRebook || !this.lookupResults.includes(record)) return
+				this.form = { ...record.form, tubeTypes: record.form.tubeTypes.slice(), reservationDate: '' }
+				this.rebooking = true; this.lookupOpen = false; this.fieldErrors = {}; this.submissionError = ''; this.requestId = ''; this.submittedPayload = ''; this.captcha = { id: '', code: '' }
+				await this.$nextTick()
+				if (this.$refs && this.$refs.captchaControl) await this.$refs.captchaControl.refresh()
+				uni.showToast({ title: '已带入信息，请核对后提交', icon: 'none' })
+			},
+			async cancelPublicRebook() {
+				if (this.submissionBusy) return
+				this.rebooking = false; this.requestId = ''; this.submittedPayload = ''; this.fieldErrors = {}; this.submissionError = ''
+				this.form = { name: '', gender: '', age: '', phone: '', idCard: '', diagnosis: '', reservationDate: '', specialNeeds: '', doctor: '', tubeTypes: [], otherTube: '' }
+				this.captcha = { id: '', code: '' }
+				await this.$nextTick()
+				if (this.$refs && this.$refs.captchaControl) await this.$refs.captchaControl.refresh()
+			},
 			handleDoctorChange(event) {
 				if (this.submissionBusy) return
 				const index = Number(event.detail.value)
@@ -166,6 +232,7 @@
 				const form = Object.fromEntries(Object.entries(this.form).map(([key, value]) => [key, Array.isArray(value) ? value.slice() : String(value).trim()]))
 				form.idCard = normalizeIdCard(form.idCard)
 				Object.assign(form, normalizeReservationCare(form))
+				if (this.rebooking) form.repeatReservation = '是'
 				if (!this.validateSubmission(form)) return
 				if (!await this.confirmBookingNotice()) return
 				// The captcha or Beijing date may expire while the reminder is open.
@@ -179,6 +246,7 @@
 				try {
 					await createBedReservation({ requestId: this.requestId, form, captcha: { ...this.captcha } })
 					this.submitted = true
+					this.lookupVersion++; this.lookupResults = []; this.lookupPhone = ''; this.lookupIdCard = ''; this.lookupCaptcha = { id: '', code: '' }; this.lookupOpen = false; this.rebooking = false
 					// No patient contact/diagnosis is persisted in browser storage.
 					this.form = { name: '', gender: '', age: '', phone: '', idCard: '', diagnosis: '', reservationDate: '', specialNeeds: '', doctor: '', tubeTypes: [], otherTube: '' }
 					this.submittedPayload = ''
@@ -255,4 +323,15 @@
 	.tube-options { display: flex; flex-wrap: wrap; gap: 20rpx 12rpx; padding-top: 8rpx; }
 	.tube-option { display: flex; align-items: center; box-sizing: border-box; width: calc(50% - 6rpx); min-height: 48rpx; color: #4d5a68; font-size: 28rpx; line-height: 40rpx; }
 	.tube-option checkbox { flex-shrink: 0; margin-right: 8rpx; transform: scale(.85); transform-origin: left center; }
+	.lookup-card { padding: 24rpx; margin-bottom: 24rpx; border: 1rpx solid #d7e6fa; border-radius: 14rpx; background: #fff; }
+	.lookup-heading, .lookup-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 14rpx; color: #344253; font-size: 29rpx; font-weight: 600; }
+	.lookup-toggle { flex-shrink: 0; color: #1677ed; font-size: 25rpx; font-weight: 400; }
+	.lookup-hint { display: block; margin-top: 14rpx; color: #788797; font-size: 25rpx; line-height: 38rpx; }
+	.lookup-input { box-sizing: border-box; width: 100%; height: 80rpx; padding: 0 18rpx; margin: 18rpx 0; border: 1rpx solid #dfe5ed; border-radius: 8rpx; font-size: 28rpx; }
+	.lookup-search { margin-top: 18rpx; color: #fff; background: #1677ed; border-radius: 10rpx; font-size: 28rpx; }
+	.lookup-error, .lookup-warning { display: block; margin-top: 16rpx; color: #c76520; font-size: 25rpx; line-height: 38rpx; }
+	.lookup-result { margin-top: 22rpx; padding-top: 20rpx; border-top: 1rpx solid #e8edf3; }
+	.lookup-rebook { margin-top: 18rpx; color: #1677ed; background: #edf5ff; }
+	.rebooking-hint { padding: 22rpx; margin-bottom: 24rpx; border-radius: 10rpx; background: #edf5ff; color: #526273; font-size: 26rpx; line-height: 40rpx; }
+	.rebooking-hint .lookup-toggle { display: block; margin-top: 10rpx; }
 </style>

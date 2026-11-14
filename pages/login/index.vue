@@ -26,8 +26,7 @@
 
 	export default {
 		data() {
-			const isDevelopment = process.env.NODE_ENV === 'development'
-			return { username: isDevelopment ? '13800138000' : '', password: isDevelopment ? 'Test1234' : '', submitting: false, nextUrl: HOME_ROUTE }
+			return { username: '', password: '', submitting: false, nextUrl: HOME_ROUTE }
 		},
 		onLoad(query = {}) {
 			this.nextUrl = getLoginDestination(query.next)

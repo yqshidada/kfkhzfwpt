@@ -397,7 +397,7 @@ const reservationLimiter = createSubmissionLimiter()
 const reservationJson = express.json({ limit: '8kb', inflate: false })
 const regularJson = express.json({ limit: '12mb' })
 app.use((req, res, next) => {
-	if (req.method !== 'POST' || !/^\/api\/bed-reservations\/?$/i.test(req.path)) return regularJson(req, res, next)
+	if (req.method !== 'POST' || !/^\/api\/bed-reservations(?:\/lookup)?\/?$/i.test(req.path)) return regularJson(req, res, next)
 	res.setHeader('Cache-Control', 'no-store')
 	reservationLimiter(req, res, () => {
 		if (!req.is('application/json')) return res.status(415).json({ message: '预约请求必须使用JSON格式' })

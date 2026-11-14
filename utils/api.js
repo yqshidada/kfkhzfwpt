@@ -90,6 +90,14 @@ export function createBedReservation(data) {
 	return request({ url: '/bed-reservations', method: 'POST', data, requiresAuth: false })
 }
 
+export function lookupBedReservations(data) {
+	return request({ url: '/bed-reservations/lookup', method: 'POST', data, requiresAuth: false })
+}
+
+export function updateBedReservationNote(id, data) {
+	return request({ url: '/bed-reservations/' + encodeURIComponent(id) + '/note', method: 'POST', data })
+}
+
 export function getBedReservations(params = {}) {
 	const query = Object.keys(params).filter(key => params[key] !== null && params[key] !== undefined && params[key] !== '')
 		.map(key => encodeURIComponent(key) + '=' + encodeURIComponent(params[key])).join('&')

@@ -44,4 +44,4 @@ async function bundle(prefix) {
   for(const text of ['预约查询 / 再次预约','请输入原预约手机号','请输入身份证号','查询预约','usePreviousReservation','lookupPending'])assert.ok(booking.includes(text),'Patient lookup/rebook control missing')
   assert.ok(!loginPage.includes(settings.TEST_LOGIN_PASSWORD),'Login password must not be bundled')
   console.log('PASS: HTTPS new shared login and both queues, protected staff notes/schema/zero-row UPDATE permission, missing-captcha lookup guard/no-store; exact H5 note and patient lookup/rebook controls; zero patient writes')
-})().catch(error=>{console.error('Reservation feature verification failed:',error.code||error.message);process.exitCode=1})
+})().catch(error=>{console.error('Reservation feature verification failed:',error.code||error.name);process.exitCode=1})

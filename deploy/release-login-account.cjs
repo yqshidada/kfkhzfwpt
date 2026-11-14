@@ -54,4 +54,4 @@ const replace = (text, key, value) => { const re = new RegExp('^' + key + '\\s*=
       console.log('Original shared login and environment restored; other accounts and business data retained')
     } else throw Error('Unknown account release mode')
   } finally { await db.end() }
-})().catch(error => { console.error('Account release audit failed:', error.code || error.message); process.exitCode = 1 })
+})().catch(error => { console.error('Account release audit failed:', error.code || error.name); process.exitCode = 1 })

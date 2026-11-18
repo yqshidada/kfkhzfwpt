@@ -11,6 +11,15 @@
 			<button class="reminder-button" size="mini" @tap="showTomorrowReservations">查看名单</button>
 		</view>
 		<view v-if="activeTab === 'reservations' && reminders.error" class="reminder-error" @tap="refreshReminders">{{ reminders.error }}，点击重试</view>
+		<view v-if="activeTab === 'reservations'" class="waiting-summary">
+			<view class="waiting-summary-title">整体平均约床时长</view>
+			<block v-if="currentList.waitingSummary && currentList.waitingSummary.completedCount > 0">
+				<view class="waiting-summary-value">约 {{ formatWaitingDays(currentList.waitingSummary.averageDays) }}<text class="waiting-summary-unit">天</text></view>
+				<view class="waiting-summary-description">按全部 {{ currentList.waitingSummary.completedCount }} 人次预约成功记录统计，不含预约中和已取消记录。</view>
+			</block>
+			<view v-else class="waiting-summary-empty">{{ currentList.loading ? '正在统计...' : currentList.waitingSummary ? '暂无预约成功记录，暂无法估算' : '统计暂不可用，请下拉刷新重试' }}</view>
+			<view class="waiting-summary-hint">仅供等床参考，实际入院以科室电话通知为准。</view>
+		</view>
 		<view class="search-bar">
 			<input v-model.trim="currentList.keyword" class="search-input" :placeholder="activeTab === 'patients' ? '搜索住院号、电话或诊断' : '搜索姓名或电话'" confirm-type="search" @confirm="search" />
 			<button class="search-button" size="mini" @tap="search">搜索</button>
@@ -51,7 +60,7 @@
 				<view v-if="record.status === '预约成功'" class="record-row waiting-days"><text>平均约床时长：{{ formatWaitingDays(record.waitingDays) }} 天</text></view>
 				<view class="staff-note" @tap.stop>
 					<view class="staff-note-heading"><text>护士备注</text><text class="staff-note-count">{{ (noteEditors[record.id] ? noteEditors[record.id].text : record.staffNote || '').length }}/1000</text></view>
-					<textarea class="staff-note-input" :value="noteEditors[record.id] ? noteEditors[record.id].text : record.staffNote || ''" maxlength="1000" :disabled="!!(noteEditors[record.id] && noteEditors[record.id].saving)" placeholder="护长、护士可在此填写备注" @input="changeNote(record, $event)" @tap.stop />
+					<textarea class="staff-note-input" :value="noteEditors[record.id] ? noteEditors[record.id].text : record.staffNote || ''" maxlength="1000" :disabled="!!(noteEditors[record.id] && noteEditors[record.id].saving)" @input="changeNote(record, $event)" @tap.stop />
 					<text v-if="noteEditors[record.id] && noteEditors[record.id].error" class="staff-note-error">{{ noteEditors[record.id].error }}</text>
 					<view class="staff-note-actions"><text class="staff-note-updated">{{ record.staffNoteUpdatedAt ? '更新于 ' + formatReservationTime(record.staffNoteUpdatedAt) : '尚无备注' }}</text><button class="note-save" size="mini" :loading="!!(noteEditors[record.id] && noteEditors[record.id].saving)" :disabled="!noteEditors[record.id] || !noteEditors[record.id].dirty || noteEditors[record.id].saving" @tap.stop="saveNote(record)">保存备注</button></view>
 					<text v-if="noteEditors[record.id] && noteEditors[record.id].conflict" class="note-refresh" @tap.stop="refreshNote(record)">加载最新备注（将替换当前输入）</text>
@@ -96,7 +105,7 @@
 	import { beijingDate, isValidReservationDate } from '../../server/reservation-validation.js'
 
 	function emptyList() {
-		return { keyword: '', queryKeyword: '', status: '', queryStatus: '', reminderOnly: false, queryReminderOnly: false, total: null, records: [], cursor: null, hasMore: true, loading: false, error: '', loaded: false, version: 0 }
+		return { keyword: '', queryKeyword: '', status: '', queryStatus: '', reminderOnly: false, queryReminderOnly: false, total: null, waitingSummary: null, records: [], cursor: null, hasMore: true, loading: false, error: '', loaded: false, version: 0 }
 	}
 	export default {
 		data() {
@@ -284,7 +293,7 @@
 				const list = this.lists[tab]
 				if (!reset && (list.loading || !list.hasMore)) return
 				const version = ++list.version
-				if (reset) { list.queryKeyword = list.keyword; list.queryStatus = list.status; list.queryReminderOnly = list.reminderOnly; list.total = null; list.cursor = null; list.records = []; list.hasMore = true }
+				if (reset) { list.queryKeyword = list.keyword; list.queryStatus = list.status; list.queryReminderOnly = list.reminderOnly; list.total = null; list.waitingSummary = null; list.cursor = null; list.records = []; list.hasMore = true }
 				list.loading = true
 				list.error = ''
 				try {
@@ -294,6 +303,7 @@
 					list.records = reset ? result.items : list.records.concat(result.items)
 					if (tab === 'reservations') {
 						list.total = result.total
+						list.waitingSummary = result.waitingSummary || null
 						for (const record of result.items) {
 							const editor = this.noteEditors[record.id]
 							if (editor && (editor.dirty || editor.saving)) continue
@@ -325,6 +335,12 @@
 	page { background: #f5f6f8; }
 	.page { min-height: 100vh; padding: 24rpx 24rpx 36rpx; box-sizing: border-box; background: #f5f6f8; }
 	.selection-hint { margin-bottom: 20rpx; color: #62758b; font-size: 28rpx; line-height: 42rpx; }
+	.waiting-summary { margin-bottom: 24rpx; padding: 28rpx; border: 1rpx solid #dce9fa; border-radius: 16rpx; background: #f0f6ff; }
+	.waiting-summary-title { color: #344253; font-size: 30rpx; font-weight: 600; line-height: 44rpx; }
+	.waiting-summary-value { margin: 12rpx 0; color: #1677ed; font-size: 48rpx; font-weight: 600; line-height: 64rpx; }
+	.waiting-summary-unit { margin-left: 12rpx; font-size: 28rpx; font-weight: 400; }
+	.waiting-summary-description, .waiting-summary-empty { margin-top: 12rpx; color: #526273; font-size: 26rpx; line-height: 40rpx; }
+	.waiting-summary-hint { margin-top: 10rpx; color: #718096; font-size: 24rpx; line-height: 38rpx; }
 	.search-bar { display: flex; align-items: center; margin-bottom: 20rpx; padding: 12rpx 14rpx 12rpx 20rpx; border-radius: 12rpx; background: #fff; box-shadow: 0 3rpx 10rpx rgba(34, 48, 65, 0.08); }
 	.search-input { flex: 1; min-width: 0; height: 58rpx; color: #344253; font-size: 29rpx; }
 	.search-button, .retry-button { margin: 0; border-radius: 8rpx; background: #1677ed; color: #fff; font-size: 26rpx; line-height: 54rpx; }

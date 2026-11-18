@@ -127,6 +127,8 @@ async function freePort() {
     const login = await request('/api/auth/login', 'POST', { username: '13800138000', password: 'ReservationTest1234' })
     assert.equal(login.status, 200)
     const token = login.data.token
+    const emptySummary = await request('/api/bed-reservations', 'GET', undefined, token)
+    assert.deepEqual(emptySummary.data.waitingSummary, { completedCount: 0, averageDays: null }, 'Empty data must not imply zero waiting days')
     for (const [route, method] of [[url + '/reminders', 'GET'], [url, 'GET'], [url + '/1', 'GET'], [url + '/1/confirm', 'POST'], [url + '/1/cancel', 'POST'], ['/api/discharge-records', 'GET']]) assert.equal((await request(route, method)).status, 401)
     for (const patch of [{ name: '' }, { name: '字'.repeat(51) }, { gender: '未知' }, { age: '121' }, { age: '-1' }, { age: '2.5' }, { phone: '123' }, { phone: '020-12345678' }, { idCard: '' }, { idCard: '110105194912310020' }, { diagnosis: '' }, { reservationDate: '2026-02-30' }, { reservationDate: '2000-01-01' }, { specialNeeds: 'a'.repeat(501) }, { repeatReservation: 'yes' }, { repeatReservation: 1 }, { reservationDate: {} }]) {
       assert.equal((await request(url, 'POST', { requestId: crypto.randomUUID(), form: { ...form, ...patch } })).status, 400)
@@ -630,6 +632,31 @@ async function freePort() {
     const envAfter = fs.readFileSync(path.join(work, '.env'), 'utf8')
     assert.ok(envAfter.includes('TEST_LOGIN_PHONE=13700137000')); assert.ok(envAfter.includes('TEST_LOGIN_PASSWORD=AccountFixture123'))
     testIp = previousIp
+    // Global statistics use every successful record, independent of visible filters/pages.
+    const dayMs = 86400000, statsNow = Date.now(), statsIds = []
+    for (const entry of [{ days: 1.25 }, { days: 3.75 }, { days: 0 }, { days: 100, cancelled: true }, { days: null }, { days: -1 }]) {
+      const [inserted] = await db.execute('INSERT INTO bed_reservations (request_id, payload_hash, name, gender, age, phone, diagnosis, created_at_ms, confirmed_at_ms, cancelled_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [crypto.randomUUID(), '0'.repeat(64), '统计测试', '女', 60, '13800138000', '仅隔离测试', statsNow, entry.days === null ? null : statsNow + entry.days * dayMs, entry.cancelled ? statsNow + 101 * dayMs : null])
+      statsIds.push(inserted.insertId)
+    }
+    async function verifyOverallStats() {
+      const [all] = await db.query('SELECT created_at_ms, confirmed_at_ms, cancelled_at_ms FROM bed_reservations')
+      const days = all.filter(row => row.confirmed_at_ms != null && row.cancelled_at_ms == null && Number(row.confirmed_at_ms) >= Number(row.created_at_ms)).map(row => (Number(row.confirmed_at_ms) - Number(row.created_at_ms)) / dayMs)
+      const expected = days.reduce((sum, value) => sum + value, 0) / days.length
+      for (const query of ['', '?limit=1', '?limit=1&cursor=1', '?keyword=不存在的统计患者&status=预约中', '?status=取消预约&reminder=tomorrow']) {
+        const response = await request(url + encodeURI(query), 'GET', undefined, token)
+        assert.equal(response.status, 200)
+        assert.equal(response.headers.get('cache-control'), 'no-store')
+        assert.equal(response.data.waitingSummary.completedCount, days.length)
+        assert.ok(Math.abs(response.data.waitingSummary.averageDays - expected) < 1e-9, 'Mean includes fractions and same-day completions but excludes invalid/cancelled/pending rows')
+      }
+      return days.length
+    }
+    const successfulBefore = await verifyOverallStats()
+    assert.equal((await request(url + '/' + statsIds[0], 'DELETE', undefined, token)).status, 200)
+    assert.equal(await verifyOverallStats(), successfulBefore - 1, 'Deleted success no longer contributes')
+    assert.equal((await request(url + '/' + statsIds[1] + '/cancel', 'POST', {}, token)).status, 200)
+    assert.equal(await verifyOverallStats(), successfulBefore - 2, 'Cancelled success no longer contributes')
     const rawRequest = (body, contentType = 'application/json') => fetch(base + url, { method: 'POST', headers: { 'content-type': contentType, 'x-forwarded-for': '192.0.2.25' }, body })
     assert.equal((await rawRequest(JSON.stringify({ padding: 'a'.repeat(9000) }))).status, 413)
     const malformed = await rawRequest('{"idCard":"PRIVATE_PARSER_TEST"')

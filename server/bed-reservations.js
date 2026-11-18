@@ -249,12 +249,16 @@ function registerReservationRoutes(app, { getPool, requireAuth, captcha = create
     // Count all matches, not only the current page or the remaining rows after the cursor.
     // Use one read snapshot so confirmation/submission cannot disagree with this page's total.
     const connection = await getPool().getConnection()
-    let rows, total
+    let rows, total, waitingSummary
     try {
       await connection.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
       await connection.beginTransaction()
       const [counts] = await connection.execute('SELECT COUNT(*) AS total FROM bed_reservations' + filterWhere, values)
       total = Number(counts[0].total)
+      // Overall completed waiting times are independent of search, filters and pagination.
+      // Exclude pending/cancelled rows and invalid historical timestamps, include same-day waits.
+      const [summary] = await connection.execute('SELECT COUNT(*) AS completed_count, AVG(confirmed_at_ms - created_at_ms) AS average_ms FROM bed_reservations WHERE confirmed_at_ms IS NOT NULL AND cancelled_at_ms IS NULL AND confirmed_at_ms >= created_at_ms')
+      waitingSummary = { completedCount: Number(summary[0].completed_count), averageDays: summary[0].average_ms == null ? null : Number(summary[0].average_ms) / DAY_MS }
       const pageClauses = cursor === null ? clauses : clauses.concat('id < ?')
       const pageValues = cursor === null ? values : values.concat(cursor)
       const pageWhere = pageClauses.length ? ' WHERE ' + pageClauses.join(' AND ') : ''
@@ -266,7 +270,7 @@ function registerReservationRoutes(app, { getPool, requireAuth, captcha = create
     } finally { connection.release() }
     const hasMore = rows.length > limit
     const items = rows.slice(0, limit).map(row => mapReservation(row))
-    res.json({ items, total, reminderDate, hasMore, nextCursor: hasMore ? items[items.length - 1].id : null })
+    res.json({ items, total, waitingSummary, reminderDate, hasMore, nextCursor: hasMore ? items[items.length - 1].id : null })
   }))
   // Staff-only, aggregate-only in-site reminders. No SMS or external notifications.
   app.get('/api/bed-reservations/reminders', requireAuth, handle(async (req, res) => {

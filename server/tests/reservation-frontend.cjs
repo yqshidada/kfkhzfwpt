@@ -27,13 +27,14 @@ function component(file, bindings = {}) {
 }
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
 const tick = () => new Promise(resolve => setImmediate(resolve))
-const result = (id, hasMore = false, total = 45) => ({ total, items: [{ id }], nextCursor: hasMore ? id : null, hasMore })
+const result = (id, hasMore = false, total = 45) => ({ waitingSummary: { completedCount: 8, averageDays: 2.5 }, total, items: [{ id }], nextCursor: hasMore ? id : null, hasMore })
 ;(async () => {
   const helpers = await import('data:text/javascript;base64,' + Buffer.from(read('utils/reservation.js')).toString('base64'))
   assert.equal(helpers.formatReservationTime('2026-10-29T00:00:00.000Z'), '2026-10-29 08:00:00')
   assert.equal(helpers.formatWaitingDays(2.5), '2.50')
   assert.equal(helpers.formatWaitingDays(0), '0.00')
   assert.equal(helpers.formatWaitingDays(null), '')
+  assert.ok(!read('pages/nurse/list.vue').includes('护长、护士可在此填写备注'))
   const requests = []
   const lists = component('pages/nurse/list.vue', { ...helpers,
     getDischargeRecords: params => { const job = deferred(); requests.push({ tab: 'patients', params, ...job }); return job.promise },
@@ -73,6 +74,8 @@ const result = (id, hasMore = false, total = 45) => ({ total, items: [{ id }], n
   assert.equal(list.currentList.total, null, 'Hide obsolete total while fetching new filters')
   requests[6].resolve(result(21, true, 2)); await filtering
   assert.equal(list.currentList.total, 2)
+  assert.equal(list.currentList.waitingSummary.averageDays, 2.5, 'Summary uses the server aggregate, not visible cards')
+  assert.equal(list.currentList.waitingSummary.completedCount, 8)
   const nextFiltered = list.loadMore()
   assert.equal(requests[7].params.status, '预约中')
   requests[7].resolve(result(20, false, 2)); await nextFiltered
@@ -82,12 +85,14 @@ const result = (id, hasMore = false, total = 45) => ({ total, items: [{ id }], n
   assert.equal(requests[8].params.status, '预约成功')
   assert.equal(requests[9].params.status, '')
   requests[9].resolve(result(99, false, 10)); await clearFilter
-  requests[8].resolve(result(1, false, 1)); await oldFilter
+  requests[8].resolve({ ...result(1, false, 1), waitingSummary: { completedCount: 1, averageDays: 99 } }); await oldFilter
   assert.equal(list.currentList.total, 10, 'Stale filter response cannot overwrite total')
+  assert.equal(list.currentList.waitingSummary.averageDays, 2.5, 'Stale filter response cannot overwrite overall statistics')
   assert.equal(list.currentList.records[0].id, 99)
   const noMatches = list.search()
   requests[10].resolve({ items: [], total: 0, hasMore: false, nextCursor: null }); await noMatches
   assert.equal(list.currentList.total, 0)
+  assert.equal(list.currentList.waitingSummary, null, 'Missing summary must not retain stale values')
   const cancelledFilter = list.handleStatusChange({ detail: { value: '3' } })
   assert.equal(requests[11].params.status, '取消预约')
   requests[11].resolve(result(100, false, 1)); await cancelledFilter

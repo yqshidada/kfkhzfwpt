@@ -31,7 +31,7 @@ function instance(page) {
 }
 ;(async () => {
   const auth = await import('data:text/javascript;base64,' + Buffer.from(read('utils/auth.js')).toString('base64'))
-  const publicRoutes = ['/pages/index/index', '/pages/rylc/index', '/pages/bed-reservation/index', '/pages/login/index']
+  const publicRoutes = ['/pages/index/index', '/pages/flows/index', '/pages/rylc/index', '/pages/bed-reservation/index', '/pages/login/index']
   const protectedRoutes = ['/pages/hzjbxx/index', '/pages/nurse/list', '/pages/nurse/list?mode=flow', '/pages/nurse/detail?id=3', '/pages/nurse/reservation-detail?id=3', '/pages/cylc/index?id=3']
   for (const route of publicRoutes) assert.equal(auth.requiresAuthentication(route), false, route)
   for (const route of protectedRoutes) {
@@ -64,12 +64,24 @@ function instance(page) {
   const home = instance(homePage)
   homePage.onShow.call(home)
   assert.equal(home.loggedIn, false)
-  assert.equal(home.menuItems.length, 5)
+  assert.equal(home.menuItems.length, 4)
+  assert.equal(home.menuItems.filter(item => item.path === '/pages/flows/index').length, 1)
+  assert.ok(!home.menuItems.some(item => item.path === '/pages/rylc/index' || item.path === '/pages/nurse/list?mode=flow'))
   for (const item of home.menuItems) {
     home.handleMenuTap(item)
     assert.equal(calls.at(-1).type, auth.requiresAuthentication(item.path) ? 'reLaunch' : 'navigateTo')
     if (!auth.requiresAuthentication(item.path)) assert.equal(calls.at(-1).url, item.path)
   }
+  const flowsPage = loadPage('pages/flows/index.vue', auth)
+  const flows = instance(flowsPage)
+  flowsPage.onShow.call(flows)
+  assert.equal(flows.loggedIn, false)
+  flows.openAdmission()
+  assert.equal(calls.at(-1).type, 'navigateTo')
+  assert.equal(calls.at(-1).url, '/pages/rylc/index')
+  flows.openDischarge()
+  assert.equal(calls.at(-1).type, 'reLaunch')
+  assert.equal(calls.at(-1).url, auth.LOGIN_ROUTE + '?next=' + encodeURIComponent('/pages/nurse/list?mode=flow'))
   const session = { token: 'unit-test-only', expiresAt: Math.floor(Date.now() / 1000) + 3600, user: {} }
   const loginSource = read('pages/login/index.vue')
   assert.ok(loginSource.includes('<text class="brand-title">登录</text>'), 'Shared login page uses the concise login heading')
@@ -82,6 +94,11 @@ function instance(page) {
   await login.handleLogin()
   assert.equal(calls.at(-1).url, '/pages/nurse/list?mode=flow', 'Login preserves selected flow mode')
   for (const route of protectedRoutes) assert.equal(auth.ensureAuthenticated(route), true)
+  flowsPage.onShow.call(flows)
+  assert.equal(flows.loggedIn, true)
+  flows.openDischarge()
+  assert.equal(calls.at(-1).type, 'navigateTo')
+  assert.equal(calls.at(-1).url, '/pages/nurse/list?mode=flow')
   homePage.onShow.call(home)
   assert.equal(home.loggedIn, true)
   home.handleLogout()

@@ -32,11 +32,10 @@
 			return {
 				loggedIn: false,
 				menuItems: [
-					{ title: '入院流程', description: '查看入院办理流程，扫码阅读入院指引', path: '/pages/rylc/index', icon: '/static/icons/admission.svg', background: 'entry-icon--mint' },
+					{ title: '住院流程', description: '统一选择查看入院指引或办理出院流程', path: '/pages/flows/index', icon: '/static/icons/admission.svg', background: 'entry-icon--mint' },
 					{ title: '预约床位', description: '填写预约床位信息，无需登录', path: '/pages/bed-reservation/index', icon: '/static/icons/bed.svg', background: 'entry-icon--mint' },
 					{ title: '患者入口', description: '填写患者基本情况，生成文档并打印好给到患者', path: '/pages/hzjbxx/index', icon: '/static/icons/patient.svg', background: 'entry-icon--mint' },
-					{ title: '护士入口', description: '查看已就诊患者记录，了解已就诊患者基本情况', path: '/pages/nurse/list', icon: '/static/icons/nurse.svg', background: 'entry-icon--mint' },
-					{ title: '出院流程', description: '选择患者并填写出院流程，生成文档及二维码', path: '/pages/nurse/list?mode=flow', icon: '/static/icons/discharge.svg', background: 'entry-icon--mint' }
+					{ title: '护士入口', description: '查看已就诊患者记录，了解已就诊患者基本情况', path: '/pages/nurse/list', icon: '/static/icons/nurse.svg', background: 'entry-icon--mint' }
 				]
 			}
 		},

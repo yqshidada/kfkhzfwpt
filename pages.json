@@ -35,6 +35,15 @@
 			}
 		},
 		{
+			"path": "pages/flows/index",
+			"style": {
+				"navigationBarTitleText": "住院流程",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F4F7FB"
+			}
+		},
+		{
 			"path": "pages/rylc/index",
 			"style": {
 				"navigationBarTitleText": "入院流程",

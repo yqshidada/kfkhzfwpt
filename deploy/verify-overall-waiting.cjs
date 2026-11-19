@@ -50,7 +50,8 @@ async function bundle(prefix) {
     assert.ok(verified,'Summary changed during all verification attempts')
   } finally {await db.end()}
   const list=await bundle('pages-nurse-list.')
-  for(const text of ['整体平均约床时长','waitingSummary','completedCount','averageDays','暂无预约成功记录，暂无法估算','实际入院以科室电话通知为准','护士备注','保存备注'])assert.ok(list.includes(text),'Summary UI or existing note controls missing')
+  for(const text of ['整体平均约床时长','waitingSummary','completedCount','averageDays','暂无预约成功记录，暂无法估算','护士备注','保存备注'])assert.ok(list.includes(text),'Summary UI or existing note controls missing')
+  assert.ok(!list.includes('仅供等床参考'),'Removed waiting-reference sentence remains')
   assert.ok(!list.includes('护长、护士可在此填写备注'),'Removed note placeholder remains')
   console.log('PASS: real HTTPS authenticated global waiting mean/count match database across search/status/reminder/pagination; no-store/auth/empty semantics; exact H5 summary and blank-note controls; zero business writes')
 })().catch(error=>{console.error('Overall waiting verification failed:',error.code||error.name);process.exitCode=1})

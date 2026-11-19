@@ -12,13 +12,14 @@
 		</view>
 		<view v-if="activeTab === 'reservations' && reminders.error" class="reminder-error" @tap="refreshReminders">{{ reminders.error }}，点击重试</view>
 		<view v-if="activeTab === 'reservations'" class="waiting-summary">
-			<view class="waiting-summary-title">整体平均约床时长</view>
+			<view class="waiting-summary-header">
+				<view class="waiting-summary-title">整体平均约床时长</view>
+				<view v-if="currentList.waitingSummary && currentList.waitingSummary.completedCount > 0" class="waiting-summary-value">约 {{ formatWaitingDays(currentList.waitingSummary.averageDays) }}<text class="waiting-summary-unit">天</text></view>
+			</view>
 			<block v-if="currentList.waitingSummary && currentList.waitingSummary.completedCount > 0">
-				<view class="waiting-summary-value">约 {{ formatWaitingDays(currentList.waitingSummary.averageDays) }}<text class="waiting-summary-unit">天</text></view>
 				<view class="waiting-summary-description">按全部 {{ currentList.waitingSummary.completedCount }} 人次预约成功记录统计，不含预约中和已取消记录。</view>
 			</block>
 			<view v-else class="waiting-summary-empty">{{ currentList.loading ? '正在统计...' : currentList.waitingSummary ? '暂无预约成功记录，暂无法估算' : '统计暂不可用，请下拉刷新重试' }}</view>
-			<view class="waiting-summary-hint">仅供等床参考，实际入院以科室电话通知为准。</view>
 		</view>
 		<view class="search-bar">
 			<input v-model.trim="currentList.keyword" class="search-input" :placeholder="activeTab === 'patients' ? '搜索住院号、电话或诊断' : '搜索姓名或电话'" confirm-type="search" @confirm="search" />
@@ -335,12 +336,12 @@
 	page { background: #f5f6f8; }
 	.page { min-height: 100vh; padding: 24rpx 24rpx 36rpx; box-sizing: border-box; background: #f5f6f8; }
 	.selection-hint { margin-bottom: 20rpx; color: #62758b; font-size: 28rpx; line-height: 42rpx; }
-	.waiting-summary { margin-bottom: 24rpx; padding: 28rpx; border: 1rpx solid #dce9fa; border-radius: 16rpx; background: #f0f6ff; }
-	.waiting-summary-title { color: #344253; font-size: 30rpx; font-weight: 600; line-height: 44rpx; }
-	.waiting-summary-value { margin: 12rpx 0; color: #1677ed; font-size: 48rpx; font-weight: 600; line-height: 64rpx; }
-	.waiting-summary-unit { margin-left: 12rpx; font-size: 28rpx; font-weight: 400; }
-	.waiting-summary-description, .waiting-summary-empty { margin-top: 12rpx; color: #526273; font-size: 26rpx; line-height: 40rpx; }
-	.waiting-summary-hint { margin-top: 10rpx; color: #718096; font-size: 24rpx; line-height: 38rpx; }
+	.waiting-summary { margin-bottom: 16rpx; padding: 16rpx 20rpx; border: 1rpx solid #dce9fa; border-radius: 12rpx; background: #f0f6ff; }
+	.waiting-summary-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4rpx 16rpx; }
+	.waiting-summary-title { color: #344253; font-size: 27rpx; font-weight: 600; line-height: 40rpx; }
+	.waiting-summary-value { color: #1677ed; font-size: 32rpx; font-weight: 600; line-height: 44rpx; white-space: nowrap; }
+	.waiting-summary-unit { margin-left: 6rpx; font-size: 24rpx; font-weight: 400; }
+	.waiting-summary-description, .waiting-summary-empty { margin-top: 6rpx; color: #526273; font-size: 24rpx; line-height: 34rpx; }
 	.search-bar { display: flex; align-items: center; margin-bottom: 20rpx; padding: 12rpx 14rpx 12rpx 20rpx; border-radius: 12rpx; background: #fff; box-shadow: 0 3rpx 10rpx rgba(34, 48, 65, 0.08); }
 	.search-input { flex: 1; min-width: 0; height: 58rpx; color: #344253; font-size: 29rpx; }
 	.search-button, .retry-button { margin: 0; border-radius: 8rpx; background: #1677ed; color: #fff; font-size: 26rpx; line-height: 54rpx; }
